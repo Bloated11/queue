@@ -8,6 +8,9 @@ import {
   cancelQueue,
   getMyTicketHistory,
   submitFeedback,
+  toggleHoldStatus,
+  getDepartmentTraffic,
+  restoreNoShowTicket,
 } from "../controllers/studentController.js";
 
 import {
@@ -25,6 +28,9 @@ router.get("/my-ticket", protect, getMyActiveTicket);
 router.get("/ticket-history", protect, getMyTicketHistory);
 router.post("/cancel", protect, cancelQueue);
 router.post("/feedback", protect, submitFeedback);
+router.post("/toggle-hold", protect, toggleHoldStatus);
+router.get("/traffic/:departmentId", protect, getDepartmentTraffic);
+router.post("/restore-ticket", protect, restoreNoShowTicket);
 
 router.get("/emergency-status", protect, getEmergencyStatus);
 

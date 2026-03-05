@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, Megaphone, Users, Clock, AlertTriangle, CheckCircle, Info, History, LayoutDashboard, PlusCircle } from "lucide-react";
+import { Bell, Megaphone, Users, Clock, AlertTriangle, CheckCircle, Info, History, LayoutDashboard, PlusCircle, Calendar } from "lucide-react";
 import {
   getDepartments,
   joinQueue,
@@ -7,6 +7,9 @@ import {
   cancelQueue,
   getCrowdStatus,
   getMyTicketHistory,
+  toggleHold,
+  getDepartmentTraffic,
+  restoreTicket,
 } from "../../services/student";
 import { socket } from "../../services/socket";
 import { subscribeToPush } from "../../services/push";
@@ -14,6 +17,7 @@ import FeedbackModal from "../../components/student/FeedbackModal";
 import { submitFeedback } from "../../services/student";
 import api from "../../services/api";
 import DashboardSidebar from "../../components/DashboardSidebar";
+import toast from "react-hot-toast";
 
 export default function StudentDashboard() {
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -29,6 +33,8 @@ export default function StudentDashboard() {
 
   const [queueOpen, setQueueOpen] = useState(true);
   const [queueLimit, setQueueLimit] = useState(null);
+  const [isPaused, setIsPaused] = useState(false);
+  const [pauseMessage, setPauseMessage] = useState("");
   const [crowdStatus, setCrowdStatus] = useState(null);
   const [ticketHistory, setTicketHistory] = useState([]);
 
@@ -45,8 +51,29 @@ export default function StudentDashboard() {
   });
 
   const [isYourTurn, setIsYourTurn] = useState(false);
+  const [broadcast, setBroadcast] = useState(null);
+  const [trafficData, setTrafficData] = useState([]);
+  const [noShowTicket, setNoShowTicket] = useState(null);
+  const [graceTime, setGraceTime] = useState(0);
+
+  // Appointment States
+  const [appointments, setAppointments] = useState([]);
+  const [apptDept, setApptDept] = useState("");
+  const [apptDate, setApptDate] = useState("");
+  const [apptTime, setApptTime] = useState("");
+  const [apptPurpose, setApptPurpose] = useState("");
+  const [availableSlots, setAvailableSlots] = useState([]);
 
   const joinedRoomRef = useRef(false);
+
+  const resetState = (msg) => {
+    setTicketInfo(null);
+    setMyDepartmentId(null);
+    setJoinDept("");
+    setNowServing("--");
+    setMessage(msg);
+    joinedRoomRef.current = false;
+  };
 
   /* SOCKET & DATA LOADING logic (Identical to original) */
   useEffect(() => {
@@ -55,17 +82,23 @@ export default function StudentDashboard() {
       setEmergencyActive(true);
       setNowServing("EMERGENCY");
       setMessage(data?.note || "🚨 Emergency in progress. Please wait.");
+      toast.error("🚨 Emergency Alert: Queue paused.", { icon: "🔥", duration: 6000 });
     };
     const onEmergencyEnded = () => {
       setEmergencyActive(false);
       setEmergencyRequested(false);
       setNowServing("--");
       setMessage("Emergency resolved. Queue resumed.");
+      toast.success("Emergency resolved. Queue resumed!", { icon: "✅" });
     };
     const onTicketCalled = (data) => {
       setNowServing(data.ticketNumber);
       if (ticketInfo && data.ticketNumber === ticketInfo.ticketNumber) {
         setIsYourTurn(true);
+        toast.success("🎯 It's Your Turn! Proceed to the counter.", {
+          duration: 10000,
+          position: "top-center",
+        });
         if (navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 300]);
         
         // Browser Notification
@@ -80,6 +113,7 @@ export default function StudentDashboard() {
     const onTicketCompleted = (data) => {
       if (ticketInfo && data.ticketNumber === ticketInfo.ticketNumber) {
         resetState("Your ticket has been completed. You may join again.");
+        toast.success("Ticket Completed! Hope we served you well.");
       }
     };
     const onTicketCancelled = () => resetState("You have left the queue.");
@@ -106,6 +140,38 @@ export default function StudentDashboard() {
       setEmergencyRequested(false);
     };
 
+    const onPauseToggled = (data) => {
+      setIsPaused(data.isPaused);
+      setPauseMessage(data.pauseMessage);
+      if (data.isPaused) {
+        toast.error("⏸️ Queue Paused: Staff is on a break.", { icon: "☕" });
+      } else {
+        toast.success("▶️ Queue Resumed!", { icon: "✅" });
+      }
+    };
+
+    const onNoShow = (data) => {
+      if (ticketInfo && data.ticketNumber === ticketInfo.ticketNumber) {
+        setNoShowTicket(ticketInfo);
+        setGraceTime(300); // 5 minutes
+        resetState("You were marked as no-show.");
+        toast.error("You were marked as no-show! You have 5 minutes to restore your position.");
+      }
+    };
+
+    const onBroadcast = (data) => {
+      setBroadcast(data);
+      toast(data.message, {
+        icon: "📢",
+        duration: 6000,
+        style: {
+          borderRadius: "10px",
+          background: "#333",
+          color: "#fff",
+        },
+      });
+    };
+
     socket.on("ticket_called", onTicketCalled);
     socket.on("ticket_completed", onTicketCompleted);
     socket.on("ticket_cancelled", onTicketCancelled);
@@ -117,6 +183,9 @@ export default function StudentDashboard() {
     socket.on("emergency_served", onEmergencyServed);
     socket.on("emergency_approved", onEmergencyApproved);
     socket.on("emergency_rejected", onEmergencyRejected);
+    socket.on("queue_pause_toggled", onPauseToggled);
+    socket.on("department_broadcast", onBroadcast);
+    socket.on("you_marked_no_show", onNoShow);
 
     return () => {
       socket.off("ticket_called", onTicketCalled);
@@ -130,6 +199,9 @@ export default function StudentDashboard() {
       socket.off("emergency_served", onEmergencyServed);
       socket.off("emergency_approved", onEmergencyApproved);
       socket.off("emergency_rejected", onEmergencyRejected);
+      socket.off("queue_pause_toggled", onPauseToggled);
+      socket.off("department_broadcast", onBroadcast);
+      socket.off("you_marked_no_show", onNoShow);
     };
   }, [ticketInfo, alertsEnabled]);
 
@@ -146,6 +218,20 @@ export default function StudentDashboard() {
       } catch {}
     };
     checkEmergency();
+  }, [joinDept]);
+
+  useEffect(() => {
+    if (!joinDept) {
+      setTrafficData([]);
+      return;
+    }
+    const fetchTraffic = async () => {
+      try {
+        const data = await getDepartmentTraffic(joinDept);
+        setTrafficData(data);
+      } catch {}
+    };
+    fetchTraffic();
   }, [joinDept]);
 
   useEffect(() => {
@@ -180,6 +266,14 @@ export default function StudentDashboard() {
         try { setTicketHistory(await getMyTicketHistory()); } catch {}
     };
     fetchHistory();
+
+    const fetchAppts = async () => {
+      try {
+        const res = await api.get("/appointments/my");
+        setAppointments(res.data);
+      } catch {}
+    };
+    fetchAppts();
   }, []);
 
   useEffect(() => {
@@ -193,6 +287,15 @@ export default function StudentDashboard() {
     };
     fetchCrowd();
   }, [statusDept]);
+
+  useEffect(() => {
+    if (graceTime <= 0) {
+      if (noShowTicket) setNoShowTicket(null);
+      return;
+    }
+    const timer = setInterval(() => setGraceTime(t => t - 1), 1000);
+    return () => clearInterval(timer);
+  }, [graceTime, noShowTicket]);
 
   const handleJoinQueue = async () => {
     try {
@@ -212,11 +315,37 @@ export default function StudentDashboard() {
     } catch { setMessage("Failed to leave queue"); }
   };
 
+  const handleToggleHold = async () => {
+    try {
+      const res = await toggleHold();
+      setTicketInfo(prev => ({ ...prev, status: res.status }));
+      toast.success(res.message);
+    } catch {
+      toast.error("Failed to update status");
+    }
+  };
+
+  const handleRestoreTicket = async () => {
+    if (!noShowTicket) return;
+    try {
+      const res = await restoreTicket(noShowTicket._id);
+      setTicketInfo(await getMyActiveTicket());
+      setMyDepartmentId(noShowTicket.departmentId);
+      setJoinDept(noShowTicket.departmentId);
+      setNoShowTicket(null);
+      setGraceTime(0);
+      toast.success(res.message);
+      setActiveTab("dashboard");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to restore position");
+    }
+  };
+
   const handleSubmitEmergencyForm = async () => {
     if (!emergencyReason || !emergencyProof) return setMessage("All fields required");
     try {
       const formData = new FormData();
-      formData.append("departmentId", joinDept);
+      formData.append("departmentId", joinDept || myDepartmentId);
       formData.append("reason", emergencyReason);
       formData.append("proof", emergencyProof);
       await api.post("/student/emergency-request", formData);
@@ -235,20 +364,57 @@ export default function StudentDashboard() {
     } catch (err) { alert(err.message); }
   };
 
+  useEffect(() => {
+    if (apptDept && apptDate) {
+      const fetchSlots = async () => {
+        try {
+          const res = await api.get("/appointments/available", {
+            params: { departmentId: apptDept, date: apptDate }
+          });
+          setAvailableSlots(res.data);
+        } catch {}
+      };
+      fetchSlots();
+    }
+  }, [apptDept, apptDate]);
+
+  const handleBookAppointment = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post("/appointments/book", {
+        departmentId: apptDept,
+        appointmentDate: apptDate,
+        timeSlot: apptTime,
+        purpose: apptPurpose
+      });
+      toast.success("Appointment booked successfully!");
+      setApptDept("");
+      setApptDate("");
+      setApptTime("");
+      setApptPurpose("");
+      const res = await api.get("/appointments/my");
+      setAppointments(res.data);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Booking failed");
+    }
+  };
+
+  const handleCancelAppointment = async (id) => {
+    try {
+      await api.put(`/appointments/cancel/${id}`);
+      toast.success("Appointment cancelled");
+      const res = await api.get("/appointments/my");
+      setAppointments(res.data);
+    } catch {
+      toast.error("Cancellation failed");
+    }
+  };
+
   const joinRoomOnce = (departmentId) => {
     if (!departmentId || joinedRoomRef.current) return;
     const id = typeof departmentId === "object" ? departmentId._id || departmentId.toString() : departmentId;
     socket.emit("join_department", id);
     joinedRoomRef.current = true;
-  };
-
-  const resetState = (msg) => {
-    setTicketInfo(null);
-    setMyDepartmentId(null);
-    setJoinDept("");
-    setNowServing("--");
-    setMessage(msg);
-    joinedRoomRef.current = false;
   };
 
   const requestNotificationPermission = async () => {
@@ -285,6 +451,7 @@ export default function StudentDashboard() {
   const tabs = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "join", label: "Join Queue", icon: PlusCircle },
+    { id: "appointments", label: "Appointments", icon: Calendar },
     { id: "history", label: "My History", icon: History },
   ];
 
@@ -311,6 +478,52 @@ export default function StudentDashboard() {
 
           {activeTab === "dashboard" && (
              <div className="animate-fade-in space-y-10">
+                {/* NO-SHOW GRACE PERIOD BANNER */}
+                {noShowTicket && (
+                   <div className="bg-red-500 text-white p-6 rounded-3xl shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 animate-pulse">
+                      <div className="flex items-center gap-4 text-center md:text-left">
+                         <div className="bg-white/20 p-3 rounded-full"><AlertTriangle size={32} /></div>
+                         <div>
+                            <h4 className="text-xl font-black uppercase">You were missed!</h4>
+                            <p className="font-bold opacity-90">Restore Ticket {noShowTicket.ticketNumber} before it's too late.</p>
+                         </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                         <div className="text-center bg-black/20 px-4 py-2 rounded-2xl">
+                            <p className="text-[10px] uppercase font-black opacity-60">Expires In</p>
+                            <p className="text-2xl font-mono font-black">{Math.floor(graceTime / 60)}:{String(graceTime % 60).padStart(2, '0')}</p>
+                         </div>
+                         <button 
+                           onClick={handleRestoreTicket}
+                           className="bg-white text-red-600 px-8 py-3 rounded-xl font-black hover:scale-105 transition-transform shadow-lg"
+                         >
+                           I'M HERE!
+                         </button>
+                      </div>
+                   </div>
+                )}
+
+                {/* BROADCAST BANNER */}
+                {broadcast && (
+                   <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl p-4 flex items-start gap-4 animate-in slide-in-from-top-4 duration-500 relative overflow-hidden group">
+                      <div className="bg-yellow-500/20 p-2 rounded-xl text-yellow-500 animate-pulse">
+                         <Megaphone size={20} />
+                      </div>
+                      <div className="flex-1">
+                         <div className="flex justify-between items-center mb-1">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-yellow-500/60">Department Announcement</span>
+                            <span className="text-[10px] opacity-40">{new Date(broadcast.timestamp).toLocaleTimeString()}</span>
+                         </div>
+                         <p className="text-[var(--text-primary)] font-bold text-sm leading-relaxed">{broadcast.message}</p>
+                         <p className="text-[10px] text-[var(--text-secondary)] mt-2 italic">— Sent by {broadcast.staffName}</p>
+                      </div>
+                      <button onClick={() => setBroadcast(null)} className="opacity-0 group-hover:opacity-40 hover:!opacity-100 transition-opacity absolute top-2 right-2 p-1">
+                         <CheckCircle size={14} />
+                      </button>
+                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-yellow-500" />
+                   </div>
+                )}
+
                 {/* ACTIVE TICKET HERO */}
                 {ticketInfo ? (
                    <div className="bg-[var(--accent-primary)] text-white p-8 md:p-12 rounded-3xl w-full shadow-2xl relative overflow-hidden text-center">
@@ -334,12 +547,42 @@ export default function StudentDashboard() {
                       )}
                       <p className="text-xs font-bold uppercase tracking-widest opacity-80 mb-4">Current Active Ticket</p>
                       <h3 className="text-7xl md:text-9xl font-black mb-6 tracking-tighter">{ticketInfo.ticketNumber}</h3>
-                      <div className="inline-block bg-white/20 backdrop-blur-md px-6 py-2 rounded-full mb-8">
-                         <p className="font-bold text-lg">Position: {ticketInfo.position}</p>
+                      <div className="flex flex-col md:flex-row items-center justify-center gap-4 mb-8">
+                         <div className="bg-white/20 backdrop-blur-md px-6 py-2 rounded-full">
+                            <p className="font-bold text-lg">Position: {ticketInfo.position}</p>
+                         </div>
+                         {ticketInfo.position > 1 && (
+                            <div className="bg-white/10 backdrop-blur-md px-6 py-2 rounded-full border border-white/10">
+                               <p className="text-sm font-medium">✨ {ticketInfo.position - 1} student(s) ahead of you</p>
+                            </div>
+                         )}
                       </div>
-                      <button onClick={handleCancelQueue} className="bg-white text-[var(--accent-primary)] px-8 py-3 rounded-xl font-bold hover:bg-white/90 shadow-lg">
-                        Leave Queue
-                      </button>
+                      <div className="flex flex-wrap items-center justify-center gap-4">
+                         <button onClick={handleCancelQueue} className="bg-white/10 text-white border border-white/20 px-8 py-3 rounded-xl font-bold hover:bg-white/20 shadow-lg">
+                           Leave Queue
+                         </button>
+                         {ticketInfo.status !== "serving" && (
+                            <button 
+                              onClick={handleToggleHold} 
+                              className={`px-8 py-3 rounded-xl font-bold shadow-lg transition-all ${
+                                ticketInfo.status === "hold" 
+                                ? "bg-yellow-500 text-white animate-pulse" 
+                                : "bg-white text-[var(--accent-primary)] hover:bg-white/90"
+                              }`}
+                            >
+                              {ticketInfo.status === "hold" ? "I'm Back" : "Step Away (5m)"}
+                            </button>
+                         )}
+                      </div>
+
+                      {/* PAUSE MESSAGE OVERLAY */}
+                      {isPaused && (
+                        <div className="absolute inset-0 bg-yellow-500/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-6 text-white animate-in fade-in duration-300">
+                           <Clock size={48} className="mb-4 animate-bounce" />
+                           <h3 className="text-2xl font-black uppercase">Queue Paused</h3>
+                           <p className="font-medium mt-2 text-center max-w-xs">{pauseMessage || "The staff is currently on a short break. Please stay nearby."}</p>
+                        </div>
+                      )}
                    </div>
                 ) : (
                    <div className="border border-dashed border-[var(--glass-border)] rounded-3xl p-12 w-full text-center">
@@ -421,6 +664,43 @@ export default function StudentDashboard() {
                    ))}
                 </div>
 
+                {joinDept && trafficData.length > 0 && (
+                   <div className="mt-10 pt-10 border-t border-[var(--glass-border)]">
+                      <h4 className="text-sm font-bold uppercase tracking-widest text-[var(--text-secondary)] mb-6 flex items-center gap-2">
+                         <Clock size={16} /> Busiest Hours (Forecast)
+                      </h4>
+                      <div className="h-32 flex items-end gap-1 px-2">
+                         {Array.from({ length: 24 }).map((_, hour) => {
+                            const data = trafficData.find(d => d._id === hour);
+                            const max = Math.max(...trafficData.map(d => d.count), 1);
+                            const height = data ? (data.count / max) * 100 : 0;
+                            return (
+                               <div key={hour} className="flex-1 flex flex-col items-center group relative">
+                                  <div 
+                                    style={{ height: `${height}%` }}
+                                    className={`w-full rounded-t-sm transition-all duration-500 ${
+                                       height > 70 ? "bg-red-500/40 group-hover:bg-red-500" : 
+                                       height > 30 ? "bg-yellow-500/40 group-hover:bg-yellow-500" : 
+                                       "bg-green-500/40 group-hover:bg-green-500"
+                                    }`}
+                                  >
+                                     {data && (
+                                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] py-1 px-1.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-10">
+                                           {data.count} tickets
+                                        </div>
+                                     )}
+                                  </div>
+                                  <span className="text-[8px] mt-2 opacity-40 font-mono">{hour}</span>
+                               </div>
+                            );
+                         })}
+                      </div>
+                      <p className="text-[10px] text-[var(--text-secondary)] mt-4 italic text-center">
+                         Forecast based on historical ticket volume. Plan your visit for green hours.
+                      </p>
+                   </div>
+                )}
+
                 <div className="mt-8 flex justify-end">
                    <button 
                      onClick={handleJoinQueue} 
@@ -431,6 +711,116 @@ export default function StudentDashboard() {
                    </button>
                 </div>
              </div>
+          )}
+
+          {activeTab === "appointments" && (
+            <div className="animate-fade-in grid grid-cols-1 lg:grid-cols-2 gap-10">
+              {/* BOOKING FORM */}
+              <div className="card p-8">
+                <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                  <Calendar className="text-[var(--accent-primary)]" /> Book a Time Slot
+                </h3>
+                <form onSubmit={handleBookAppointment} className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Department</label>
+                    <select 
+                      className="input-field" 
+                      required 
+                      value={apptDept} 
+                      onChange={(e) => setApptDept(e.target.value)}
+                    >
+                      <option value="">Select Department...</option>
+                      {departments.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Date</label>
+                    <input 
+                      type="date" 
+                      className="input-field" 
+                      required 
+                      min={new Date().toISOString().split("T")[0]}
+                      value={apptDate} 
+                      onChange={(e) => setApptDate(e.target.value)}
+                    />
+                  </div>
+                  {apptDept && apptDate && (
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">Available Slots</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {availableSlots.map(slot => (
+                          <button
+                            key={slot.time}
+                            type="button"
+                            disabled={!slot.available}
+                            onClick={() => setApptTime(slot.time)}
+                            className={`p-2 text-xs font-bold rounded-lg border transition-all ${
+                              apptTime === slot.time 
+                                ? "bg-[var(--accent-primary)] text-white border-[var(--accent-primary)]" 
+                                : slot.available 
+                                  ? "bg-[var(--bg-secondary)] border-[var(--glass-border)] hover:border-[var(--accent-primary)]" 
+                                  : "opacity-30 cursor-not-allowed bg-gray-100"
+                            }`}
+                          >
+                            {slot.time}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Purpose of Visit</label>
+                    <textarea 
+                      className="input-field min-h-[100px]" 
+                      required 
+                      placeholder="Briefly describe why you're visiting..."
+                      value={apptPurpose}
+                      onChange={(e) => setApptPurpose(e.target.value)}
+                    ></textarea>
+                  </div>
+                  <button type="submit" className="btn-primary w-full py-4 text-lg" disabled={!apptTime}>
+                    Confirm Appointment
+                  </button>
+                </form>
+              </div>
+
+              {/* MY APPOINTMENTS */}
+              <div className="space-y-6">
+                <h3 className="text-xl font-bold flex items-center gap-2">
+                  <Clock className="text-[var(--accent-primary)]" /> My Scheduled Visits
+                </h3>
+                {appointments.length === 0 ? (
+                  <div className="card p-10 text-center border-dashed">
+                    <p className="text-[var(--text-secondary)]">No upcoming appointments.</p>
+                  </div>
+                ) : (
+                  appointments.map(appt => (
+                    <div key={appt._id} className={`card p-6 border-l-4 ${appt.status === "cancelled" ? "border-red-500 opacity-60" : "border-[var(--accent-primary)]"}`}>
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <h4 className="font-bold text-lg">{appt.department?.name}</h4>
+                          <p className="text-xs text-[var(--text-secondary)]">{new Date(appt.appointmentDate).toLocaleDateString()} at {appt.timeSlot}</p>
+                        </div>
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
+                          appt.status === "booked" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                        }`}>
+                          {appt.status}
+                        </span>
+                      </div>
+                      <p className="text-sm mb-4 text-[var(--text-secondary)] italic">"{appt.purpose}"</p>
+                      {appt.status === "booked" && (
+                        <button 
+                          onClick={() => handleCancelAppointment(appt._id)}
+                          className="text-red-500 text-xs font-bold hover:underline"
+                        >
+                          Cancel Appointment
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           )}
 
           {activeTab === "history" && (

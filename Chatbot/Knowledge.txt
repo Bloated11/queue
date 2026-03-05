@@ -1,0 +1,87 @@
+What is Campus Queue?
+Campus Queue is a smart digital queue management system designed for college campuses. It replaces manual, paper-based department queues with a real-time, role-based digital system. Students can join queues remotely, track their status, and get notified — without standing in line.
+
+How does Campus Queue work?
+Students log in to the system and join a queue for a specific department or service. The system assigns them a ticket with a unique number. As the queue moves forward, students receive real-time updates and push notifications. When their turn arrives, they are notified to approach the counter.
+
+What problems does Campus Queue solve?
+Campus Queue eliminates long physical queues, reduces waiting time, prevents crowding near department offices, and gives students full transparency about their queue position and status. It makes campus service delivery faster, fairer, and more organized.
+
+What are the user roles in Campus Queue?
+Campus Queue has four roles: Student, Staff, Admin, and Guest. Each role has different access levels and permissions within the system. Students join queues and track tickets. Staff manage and serve queues. Admins oversee the entire system, manage departments, and configure settings. Guests have limited read-only access to public queue information.
+
+What can a Student do in Campus Queue?
+A student can register and log in to the system, browse available department queues, join a queue and receive a ticket, view their current ticket status, see real-time queue updates, receive push notifications when their turn is near, and view their past ticket history from the dashboard.
+
+What can Staff do in Campus Queue?
+Staff members can log in to their department dashboard, view the active queue for their counter, call the next student in line, mark tickets as served or skipped, manage queue flow, and monitor department activity in real time.
+
+What can an Admin do in Campus Queue?
+Admins have full system access. They can create and manage departments, assign staff to counters, monitor all active queues across campus, generate reports, configure system settings, manage user accounts, and trigger emergency announcements or queue pauses.
+
+What can a Guest do in Campus Queue?
+Guests can view general queue information and public department status without logging in. They cannot join queues or access personal ticket data. To use full features, guests must register as a student.
+
+How do I join a queue?
+Log in to your Campus Queue account, go to your Student Dashboard, browse the list of available departments, select the department you need, and click "Join Queue." The system will immediately assign you a ticket and show your position in the queue.
+
+What is a ticket in Campus Queue?
+A ticket is a digital token assigned to a student when they join a queue. It contains a unique ticket number, the department name, the date and time of joining, and the current status of the ticket. Tickets allow the system to manage queue order fairly and transparently.
+
+What is the ticket lifecycle?
+When a student joins a queue, a ticket is created with the status "Waiting." As the queue progresses, the status changes to "Called" when it is the student's turn. After the student is served, the status becomes "Completed." If a student does not respond or leaves, the ticket can be marked as "Skipped" or "Cancelled."
+
+What are the possible ticket statuses?
+Waiting — the student is in the queue and waiting for their turn.
+Called — it is currently the student's turn; they should approach the counter.
+Completed — the student has been served and the ticket is closed.
+Skipped — the student did not respond when called; the next person was served.
+Cancelled — the student or staff cancelled the ticket before it was served.
+
+How do real-time updates work in Campus Queue?
+Campus Queue uses real-time synchronization so that any change in the queue — such as a ticket being called or completed — is instantly reflected on all connected dashboards. Students see their queue position update live without needing to refresh the page.
+
+What are push notifications in Campus Queue?
+Campus Queue supports web push notifications powered by VAPID keys. Students who allow notifications will receive alerts directly on their device when their ticket status changes — for example, when they are next in line or when their turn has been called. This means students do not have to keep the app open to stay informed.
+
+How do I enable push notifications?
+When you first log in, Campus Queue will ask for permission to send you notifications. Click "Allow" to enable them. You will then receive browser push notifications for ticket updates, queue changes, and important announcements even when you are not actively viewing the app.
+
+What is the Student Dashboard?
+The Student Dashboard is the main interface for students after logging in. From the dashboard, students can view available queues, join a queue, see their active ticket and its current status, check their ticket history, and manage notification preferences. All real-time updates appear here.
+
+What is the Staff Dashboard?
+The Staff Dashboard is the interface for department staff. It shows the live queue for their assigned counter, allows them to call the next student, mark tickets as served or skipped, and monitor queue length and wait times in real time.
+
+What is the Admin Dashboard?
+The Admin Dashboard provides a full system overview. Admins can see all department queues, manage user accounts, configure department settings, view analytics and reports, and control system-wide features like emergency mode.
+
+What is Emergency Mode in Campus Queue?
+Emergency Mode is a special system state that can be activated by an Admin. When enabled, all queues are paused and students are notified immediately. This is used for campus emergencies, sudden department closures, or critical announcements that require halting all queue activity.
+
+How do I check my current ticket status?
+Log in to your Student Dashboard. Your active ticket and its current status are displayed prominently on the dashboard. You will also receive a push notification when your status changes. For the most up-to-date information, always refer to your Dashboard.
+
+How do I view my ticket history?
+Log in to your Student Dashboard and navigate to the "Ticket History" section. You will see a list of all your past tickets including department name, date, ticket number, and final status.
+
+Can I cancel my ticket after joining a queue?
+Yes. From your Student Dashboard, you can cancel your active ticket before you are called. Once a ticket has been called or completed, it cannot be cancelled. Cancelling your ticket removes you from the queue and frees up your spot for the next student.
+
+What happens if I miss my turn?
+If you do not respond when your ticket is called, a staff member may mark your ticket as "Skipped." You will need to rejoin the queue and receive a new ticket. Push notifications are sent to help ensure you do not miss your turn.
+
+Can I join multiple queues at the same time?
+Each student can have one active ticket per department at a time. You may be able to join queues at different departments simultaneously depending on system configuration by the Admin.
+
+How is the queue order determined?
+The queue operates on a first-come, first-served basis. The student who joins earliest receives a lower ticket number and will be served first. The system ensures fair, transparent ordering with no manual interference.
+
+What technology powers Campus Queue?
+Campus Queue is built using the MERN stack: MongoDB for the database, Express.js for the backend API, React with Vite for the frontend interface, and Node.js as the runtime. Authentication is handled using JWT (JSON Web Tokens). Real-time updates use backend-driven synchronization and push notifications use the Web Push protocol with VAPID keys.
+
+Is Campus Queue secure?
+Yes. Campus Queue uses JWT-based authentication to ensure only authorized users can access their accounts and data. Each user's session is protected, and role-based access control ensures students, staff, and admins only see what they are permitted to access.
+
+Who can I contact for help with Campus Queue?
+If you are facing technical issues with Campus Queue, please contact your campus IT support or system administrator. For general guidance on how to use the system, the AI Assistant is available to help you navigate features and understand how everything works.

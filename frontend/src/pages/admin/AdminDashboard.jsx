@@ -4,15 +4,22 @@ import {
   getDepartments,
   getStaffUsers,
   assignStaffToDepartment,
+  updateDepartment,
+  deleteDepartment,
 } from "../../services/admin";
-import { LayoutDashboard, Users, MessageSquare, Settings, Plus, UserPlus } from "lucide-react";
+import { LayoutDashboard, Users, MessageSquare, Settings, Plus, UserPlus, BarChart3, Edit2, Trash2, X } from "lucide-react";
 import DashboardSidebar from "../../components/DashboardSidebar";
+import AdminAnalytics from "../../components/admin/AdminAnalytics";
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+
+  const [editingDept, setEditingDept] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editDesc, setEditDescription] = useState("");
 
   const [departments, setDepartments] = useState([]);
   const [staff, setStaff] = useState([]);
@@ -106,12 +113,45 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleUpdateDepartment = async () => {
+    if (!editName.trim()) return setMessage("Name required");
+    try {
+      setLoading(true);
+      await updateDepartment(editingDept._id, { name: editName, description: editDesc });
+      setMessage("Department updated");
+      setEditingDept(null);
+      fetchDepartments();
+    } catch {
+      setMessage("Update failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteDepartment = async (id) => {
+    if (!window.confirm("Are you sure? This will delete the queue and unassign staff.")) return;
+    try {
+      await deleteDepartment(id);
+      setMessage("Department deleted");
+      fetchDepartments();
+    } catch {
+      setMessage("Delete failed");
+    }
+  };
+
+  const startEditing = (dept) => {
+    setEditingDept(dept);
+    setEditName(dept.name);
+    setEditDescription(dept.description || "");
+  };
+
   const filteredDepartments = departments.filter((dept) =>
     dept.name.toLowerCase().includes(search.toLowerCase())
   );
 
   const tabs = [
     { id: "overview", label: "Overview", icon: LayoutDashboard },
+    { id: "analytics", label: "Analytics", icon: BarChart3 },
     { id: "staff", label: "Manage Staff", icon: Users },
     { id: "feedback", label: "Feedback", icon: MessageSquare },
   ];
@@ -131,6 +171,11 @@ export default function AdminDashboard() {
             </div>
          )}
 
+
+         {/* =======================
+             TAB: ANALYTICS
+         ======================== */}
+         {activeTab === "analytics" && <AdminAnalytics />}
 
          {/* =======================
              TAB: OVERVIEW (DEPARTMENTS)
@@ -182,23 +227,57 @@ export default function AdminDashboard() {
               {/* List */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                  {filteredDepartments.map((dept) => (
-                    <div key={dept._id} className="card hover:border-[var(--accent-primary)] transition-colors">
+                    <div key={dept._id} className="card hover:border-[var(--accent-primary)] transition-colors group">
                        <div className="flex justify-between items-start mb-4">
                           <h3 className="font-bold text-lg text-[var(--text-primary)]">{dept.name}</h3>
-                          <span className="text-xs font-mono px-2 py-1 rounded bg-[rgba(var(--accent-primary),0.1)] text-[var(--accent-primary)]">
-                             {dept.staff?.length || 0} Staff
-                          </span>
+                          <div className="flex gap-2">
+                             <button onClick={() => startEditing(dept)} className="p-1.5 rounded-lg hover:bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Edit2 size={14} />
+                             </button>
+                             <button onClick={() => handleDeleteDepartment(dept._id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Trash2 size={14} />
+                             </button>
+                          </div>
                        </div>
                        <p className="text-sm text-[var(--text-secondary)] mb-4 min-h-[40px]">
                           {dept.description || "No description."}
                        </p>
-                       <div className="text-xs text-[var(--text-secondary)] border-t border-[var(--glass-border)] pt-3">
-                          ID: <span className="font-mono opacity-50">{dept._id}</span>
+                       <div className="flex justify-between items-center text-xs text-[var(--text-secondary)] border-t border-[var(--glass-border)] pt-3">
+                          <span>{dept.staff?.length || 0} Staff</span>
+                          <span className="font-mono opacity-50">{dept._id.slice(-6)}</span>
                        </div>
                     </div>
                  ))}
               </div>
            </div>
+         )}
+
+         {/* EDIT MODAL */}
+         {editingDept && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+               <div className="card w-full max-w-md p-8 shadow-2xl scale-in-center">
+                  <div className="flex justify-between items-center mb-6">
+                     <h3 className="text-xl font-bold text-[var(--text-primary)]">Edit Department</h3>
+                     <button onClick={() => setEditingDept(null)} className="p-2 hover:bg-white/5 rounded-full"><X size={20}/></button>
+                  </div>
+                  <div className="space-y-4">
+                     <div>
+                        <label className="text-xs font-bold text-[var(--text-secondary)] uppercase mb-1 block">Name</label>
+                        <input value={editName} onChange={e => setEditName(e.target.value)} className="input-field" />
+                     </div>
+                     <div>
+                        <label className="text-xs font-bold text-[var(--text-secondary)] uppercase mb-1 block">Description</label>
+                        <textarea value={editDesc} onChange={e => setEditDescription(e.target.value)} className="input-field min-h-[100px]" />
+                     </div>
+                     <div className="pt-4 flex gap-3">
+                        <button onClick={() => setEditingDept(null)} className="btn-secondary flex-1">Cancel</button>
+                        <button onClick={handleUpdateDepartment} disabled={loading} className="btn-primary flex-1">
+                           {loading ? "Updating..." : "Save Changes"}
+                        </button>
+                     </div>
+                  </div>
+               </div>
+            </div>
          )}
 
 

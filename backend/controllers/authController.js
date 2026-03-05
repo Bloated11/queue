@@ -2,6 +2,33 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import TokenBlacklist from "../models/TokenBlacklist.js";
+import nodemailer from "nodemailer";
+import dotenv from "dotenv";
+dotenv.config();
+
+const sendWelcomeEmail = async (email, name) => {
+  try {
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) return;
+
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    await transporter.sendMail({
+      from: `"Campus Queue" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Welcome to Campus Queue!",
+      html: `<h1>Hello ${name},</h1><p>Welcome to the Campus Queue Management System. You can now join queues and book appointments online.</p>`,
+    });
+    console.log(`📧 Welcome email sent to ${email}`);
+  } catch (error) {
+    console.error("❌ Welcome email failed:", error.message);
+  }
+};
 
 // =======================
 // SIGNUP
@@ -32,6 +59,9 @@ export const signup = async (req, res) => {
       password: hashedPassword,
       role: role || "student",
     });
+
+    // 📧 Send Welcome Email
+    await sendWelcomeEmail(email, fullName);
 
     res.status(201).json({
       message: "User registered successfully",

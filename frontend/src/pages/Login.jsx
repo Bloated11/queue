@@ -26,6 +26,7 @@ export default function Login() {
       // ✅ AUTH LOGIC (UNCHANGED)
       localStorage.setItem("token", data.token);
       localStorage.setItem("role", data.user.role);
+      localStorage.setItem("user", JSON.stringify(data.user)); // Store user object for Chatbot/etc
 
       if (!socket.connected) socket.connect();
 

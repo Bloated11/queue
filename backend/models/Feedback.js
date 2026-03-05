@@ -20,6 +20,13 @@ const feedbackSchema = new mongoose.Schema(
       ref: "Department",
       required: true,
     },
+    
+    rating: {
+      type: Number,
+      min: 1,
+      max: 5,
+      default: 5
+    },
 
     // ✅ AT LEAST ONE REQUIRED
     options: {

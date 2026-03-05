@@ -1,9 +1,11 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+dotenv.config();
+
 import http from "http";
 import { Server } from "socket.io";
-
+import { spawn } from "child_process";
 import connectDB from "./config/db.js";
 
 // Routes
@@ -14,6 +16,8 @@ import staffRoutes from "./routes/staffRoutes.js";
 import guestRoutes from "./routes/guestRoutes.js";
 import queueRoutes from "./routes/queueRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import chatbotRoutes from "./routes/chatbotRoutes.js";
+import appointmentRoutes from "./routes/appointmentRoutes.js";
 import { initWebPush } from "./utils/push.js";
 import path from "path";
 
@@ -21,7 +25,6 @@ import path from "path";
 // =======================
 // LOAD ENV VARIABLES
 // =======================
-dotenv.config();
 initWebPush();
 
 
@@ -72,6 +75,8 @@ app.use("/api/staff", staffRoutes);
 app.use("/api/guest", guestRoutes);
 app.use("/api/queue", queueRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/chatbot", chatbotRoutes);
+app.use("/api/appointments", appointmentRoutes);
 app.use("/uploads", express.static("uploads"));
 
 
@@ -124,6 +129,12 @@ io.on("connection", (socket) => {
     console.log(`👤 Socket ${socket.id} joined ${userRoom}`);
   });
 
+  // 🛡️ ADMIN ROOM
+  socket.on("join_admin", () => {
+    socket.join("admin_room");
+    console.log(`🛡️ Socket ${socket.id} joined admin_room`);
+  });
+
   socket.on("disconnect", () => {
     console.log("❌ Socket disconnected:", socket.id);
   });
@@ -137,6 +148,19 @@ const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+
+  // 🤖 AUTO-START CHATBOT SERVICE (FASTAPI)
+  const chatbotPython = path.resolve(process.cwd(), "../Chatbot/venv/bin/python3");
+  const chatbotProcess = spawn(chatbotPython, ["main.py"], {
+    cwd: path.resolve(process.cwd(), "../Chatbot"),
+    stdio: "inherit",
+  });
+
+  chatbotProcess.on("error", (err) => {
+    console.error("❌ Failed to start Chatbot service:", err.message);
+  });
+
+  process.on("exit", () => chatbotProcess.kill());
 });
 
 // =======================

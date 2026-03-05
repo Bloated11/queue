@@ -37,4 +37,19 @@ export const submitFeedback = async (payload) => {
   return res.data;
 };
 
+export const toggleHold = async () => {
+  const res = await api.post("/student/toggle-hold");
+  return res.data;
+};
+
+export const getDepartmentTraffic = async (departmentId) => {
+  const res = await api.get(`/student/traffic/${departmentId}`);
+  return res.data;
+};
+
+export const restoreTicket = async (ticketId) => {
+  const res = await api.post("/student/restore-ticket", { ticketId });
+  return res.data;
+};
+
 

@@ -33,6 +33,11 @@ export const toggleQueue = async () => {
   return res.data;
 };
 
+export const togglePauseQueue = async (pauseMessage) => {
+  const res = await api.post("/staff/toggle-pause", { pauseMessage });
+  return res.data;
+};
+
 /* =========================
    SET QUEUE LIMIT
 ========================= */
@@ -57,5 +62,15 @@ export const getQueueStats = async () => {
 
 export const getPendingEmergencies = async () => {
   const res = await api.get("/staff/emergencies");
+  return res.data;
+};
+
+export const sendBroadcast = async (message) => {
+  const res = await api.post("/staff/broadcast", { message });
+  return res.data;
+};
+
+export const markNoShow = async (ticketId) => {
+  const res = await api.post("/staff/no-show", { ticketId });
   return res.data;
 };

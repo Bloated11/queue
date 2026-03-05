@@ -34,7 +34,6 @@ export default function Navbar() {
   const isActive = (path) => location.pathname === path;
 
   const navItems = [
-    { name: "Features", path: "/#features", icon: Rocket },
     { name: "About", path: "/about", icon: ShieldCheck },
   ];
 

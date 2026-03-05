@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+requests
+pydantic
+motor
+python-dotenv

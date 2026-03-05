@@ -4,14 +4,17 @@ import {
   callNextTicket,
   completeTicket,
   toggleQueue,
+  togglePauseQueue,
   increaseQueueLimit,
   getQueueStats,
   getPendingEmergencies,
+  sendBroadcast,
+  markNoShow,
 } from "../../services/staff";
 import api from "../../services/api";
 import { socket } from "../../services/socket";
 import DashboardSidebar from "../../components/DashboardSidebar";
-import { Activity, Settings, QrCode } from "lucide-react";
+import { Activity, Settings, QrCode, Megaphone } from "lucide-react";
 
 export default function StaffDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -26,13 +29,21 @@ export default function StaffDashboard() {
 
   const [completing, setCompleting] = useState(false);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [pauseText, setPauseText] = useState("");
 
   const [emergencyActive, setEmergencyActive] = useState(false);
   const [emergencyNote, setEmergencyNote] = useState("");
   const [emergencies, setEmergencies] = useState([]);
   const [pendingEmergencies, setPendingEmergencies] = useState(0);
 
-  const [stats, setStats] = useState({ total: 0, served: 0, remaining: 0 });
+  const [stats, setStats] = useState({ total: 0, served: 0, waiting: 0, serving: 0, onHold: 0 });
+  const [departments, setDepartments] = useState([]);
+  const [selectedDept, setSelectedDept] = useState("");
+  const [note, setNote] = useState("");
+  const [activeTicketData, setActiveTicketData] = useState(null);
+  const [activityFeed, setActivityFeed] = useState([]);
+  const [broadcastMsg, setBroadcastMsg] = useState("");
   const joinedRef = useRef(false);
 
   useEffect(() => {
@@ -40,6 +51,7 @@ export default function StaffDashboard() {
     fetchStats();
     fetchEmergencyCount();
     fetchEmergencies();
+    fetchDepartments();
 
     const onEmergencyRequested = (data) => {
       fetchEmergencyCount();
@@ -61,6 +73,10 @@ export default function StaffDashboard() {
     try {
       const data = await getStaffProfile();
       setStaff(data);
+      if (data.currentTicketDetails) {
+         setCurrentTicket(data.currentTicketDetails.ticketNumber);
+         fetchActiveTicketDetails(data.currentTicketDetails._id);
+      }
       if (!joinedRef.current && data?.department?._id) {
         socket.emit("join_department", data.department._id);
         joinedRef.current = true;
@@ -96,38 +112,112 @@ export default function StaffDashboard() {
     } catch {}
   };
 
+  const fetchDepartments = async () => {
+    try {
+      const res = await api.get("/staff/transfer-departments");
+      setDepartments(res.data);
+    } catch {}
+  };
+
+  const fetchActiveTicketDetails = async (ticketId) => {
+     try {
+        const res = await api.get(`/staff/ticket/${ticketId}`);
+        setActiveTicketData(res.data);
+     } catch {}
+  };
+
+  const handleAddNote = async () => {
+    if (!note || !activeTicketData) return;
+    try {
+      await api.post("/staff/add-note", {
+        ticketId: activeTicketData._id,
+        content: note,
+      });
+      setNote("");
+      fetchActiveTicketDetails(activeTicketData._id);
+    } catch {
+      setMessage("Failed to add note");
+    }
+  };
+
+  const handleTransfer = async () => {
+    if (!selectedDept || !activeTicketData) return;
+    try {
+      await api.post("/staff/transfer", {
+        ticketId: activeTicketData._id,
+        toDepartmentId: selectedDept,
+      });
+      setMessage(`Ticket ${activeTicketData.ticketNumber} transferred.`);
+      setCurrentTicket(null);
+      setActiveTicketData(null);
+      setSelectedDept("");
+      fetchStats();
+    } catch {
+      setMessage("Transfer failed");
+    }
+  };
+
   /* SOCKETS */
   useEffect(() => {
-    const onTicketCalled = (data) => {
+    const onTicketCalled = async (data) => {
       setCurrentTicket(data.ticketNumber);
+      if (data.ticketId) fetchActiveTicketDetails(data.ticketId);
       fetchStats();
+      addActivity(`Ticket ${data.ticketNumber} called`);
     };
-    const onTicketCompleted = () => {
+    const onTicketCompleted = (data) => {
       setCurrentTicket(null);
+      setActiveTicketData(null);
       setCompleting(false);
       fetchStats();
+      addActivity(`Ticket ${data?.ticketNumber || "Active"} completed`);
     };
     const onEmergencyStarted = (data) => {
       setEmergencyActive(true);
       setEmergencyNote(data?.note || "Emergency in progress");
       setCurrentTicket("EMERGENCY");
+      addActivity(`🚨 Emergency started: ${data?.note || "Priority service active"}`);
     };
     const onEmergencyEnded = () => {
       setEmergencyActive(false);
       setEmergencyNote("");
       setCurrentTicket(null);
+      addActivity("✅ Emergency resolved");
+    };
+
+    const onPauseToggled = (data) => {
+      setIsPaused(data.isPaused);
+      setPauseText(data.pauseMessage);
+      addActivity(`Queue ${data.isPaused ? "Paused" : "Resumed"}`);
+    };
+
+    const onHoldToggled = (data) => {
+      fetchStats();
+      addActivity(`Ticket ${data.ticketNumber} ${data.status === 'hold' ? 'stepped away' : 'returned'}`);
+    };
+
+    const addActivity = (msg) => {
+      setActivityFeed(prev => [{
+        id: Date.now(),
+        message: msg,
+        time: new Date().toLocaleTimeString()
+      }, ...prev].slice(0, 10));
     };
 
     socket.on("ticket_called", onTicketCalled);
     socket.on("ticket_completed", onTicketCompleted);
     socket.on("emergency_started", onEmergencyStarted);
     socket.on("emergency_ended", onEmergencyEnded);
+    socket.on("queue_pause_toggled", onPauseToggled);
+    socket.on("ticket_hold_toggled", onHoldToggled);
 
     return () => {
       socket.off("ticket_called", onTicketCalled);
       socket.off("ticket_completed", onTicketCompleted);
       socket.off("emergency_started", onEmergencyStarted);
       socket.off("emergency_ended", onEmergencyEnded);
+      socket.off("queue_pause_toggled", onPauseToggled);
+      socket.off("ticket_hold_toggled", onHoldToggled);
     };
   }, []);
 
@@ -136,6 +226,7 @@ export default function StaffDashboard() {
     try {
       const data = await callNextTicket();
       setCurrentTicket(data.ticketNumber);
+      if (data.ticketId) fetchActiveTicketDetails(data.ticketId);
       setMessage(data.message);
       fetchStats();
     } catch (err) {
@@ -163,6 +254,17 @@ export default function StaffDashboard() {
       setMessage(data.message);
     } catch (err) {
       setMessage("Failed to toggle queue");
+    }
+  };
+
+  const handleTogglePause = async () => {
+    try {
+      const data = await togglePauseQueue();
+      setIsPaused(data.isPaused);
+      setPauseText(data.pauseMessage);
+      setMessage(data.message);
+    } catch (err) {
+      setMessage("Failed to toggle pause");
     }
   };
 
@@ -232,6 +334,30 @@ export default function StaffDashboard() {
     }
   };
 
+  const handleSendBroadcast = async () => {
+    if (!broadcastMsg) return;
+    try {
+      await sendBroadcast(broadcastMsg);
+      setMessage("Broadcast sent!");
+      setBroadcastMsg("");
+    } catch {
+      setMessage("Failed to send broadcast");
+    }
+  };
+
+  const handleMarkNoShow = async () => {
+    if (!activeTicketData) return;
+    try {
+      await markNoShow(activeTicketData._id);
+      setMessage(`Ticket ${activeTicketData.ticketNumber} marked as no-show.`);
+      setCurrentTicket(null);
+      setActiveTicketData(null);
+      fetchStats();
+    } catch {
+      setMessage("Failed to mark no-show");
+    }
+  };
+
   const tabs = [
     { id: "overview", label: "Queue Visuals", icon: Activity },
     { id: "settings", label: "Queue Settings", icon: Settings },
@@ -297,13 +423,90 @@ export default function StaffDashboard() {
                  >
                     {completing ? "Completing..." : "Complete Ticket"}
                  </button>
+                 {activeTicketData && (
+                    <button
+                       onClick={handleMarkNoShow}
+                       className="px-12 py-5 text-lg rounded-2xl w-full md:w-auto border border-red-500/20 text-red-500 hover:bg-red-500/10 font-bold transition-all"
+                    >
+                       Mark No-Show
+                    </button>
+                 )}
               </div>
 
+              {/* TICKET CONTEXT (NOTES & TRANSFER) */}
+              {activeTicketData && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in slide-in-from-bottom-4 duration-500">
+                   {/* NOTES SECTION */}
+                   <div className="card p-6 flex flex-col h-full border-blue-500/10">
+                      <h3 className="text-sm font-bold uppercase tracking-widest text-[var(--text-secondary)] mb-4 flex items-center gap-2">
+                        📝 Internal Notes
+                      </h3>
+                      <div className="flex-1 overflow-y-auto max-h-[200px] mb-4 space-y-3 pr-2 scrollbar-thin">
+                         {activeTicketData.notes?.length > 0 ? activeTicketData.notes.map((n, i) => (
+                           <div key={i} className="bg-white/5 p-3 rounded-xl border border-white/5">
+                              <p className="text-sm text-[var(--text-primary)]">{n.content}</p>
+                              <div className="flex justify-between mt-2 opacity-50 text-[10px]">
+                                 <span>By {n.author?.fullName || "Staff"}</span>
+                                 <span>{new Date(n.createdAt).toLocaleTimeString()}</span>
+                              </div>
+                           </div>
+                         )) : (
+                           <p className="text-xs text-[var(--text-secondary)] italic text-center py-4">No notes for this ticket.</p>
+                         )}
+                      </div>
+                      <div className="flex gap-2">
+                         <input 
+                           placeholder="Add a private note..." 
+                           value={note}
+                           onChange={(e) => setNote(e.target.value)}
+                           className="input-field py-2 text-sm flex-1"
+                         />
+                         <button onClick={handleAddNote} className="btn-primary py-2 px-4 text-xs">Add</button>
+                      </div>
+                   </div>
+
+                   {/* TRANSFER SECTION */}
+                   <div className="card p-6 border-purple-500/10">
+                      <h3 className="text-sm font-bold uppercase tracking-widest text-[var(--text-secondary)] mb-4">
+                        🚀 Transfer Ticket
+                      </h3>
+                      <p className="text-xs text-[var(--text-secondary)] mb-6">Transfer this student to another department queue.</p>
+                      <div className="space-y-4">
+                         <select 
+                           value={selectedDept}
+                           onChange={(e) => setSelectedDept(e.target.value)}
+                           className="input-field"
+                         >
+                            <option value="">Select Target Department...</option>
+                            {departments.filter(d => d._id !== staff?.department?._id).map(d => (
+                              <option key={d._id} value={d._id}>{d.name}</option>
+                            ))}
+                         </select>
+                         <button 
+                           onClick={handleTransfer}
+                           disabled={!selectedDept}
+                           className="btn-secondary w-full py-3 text-sm border-purple-500/20 hover:bg-purple-500/10 text-purple-400 font-bold"
+                         >
+                            Confirm Transfer
+                         </button>
+                      </div>
+                   </div>
+                </div>
+              )}
+
                {/* STATS */}
-               <div className="grid grid-cols-3 gap-4">
+               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                   <div className="card text-center py-6">
                      <p className="text-xs uppercase text-[var(--text-secondary)]">Waiting</p>
-                     <p className="text-3xl font-bold text-[var(--accent-primary)]">{stats.remaining}</p>
+                     <p className="text-3xl font-bold text-[var(--accent-primary)]">{stats.waiting}</p>
+                  </div>
+                  <div className="card text-center py-6 border-yellow-500/20">
+                     <p className="text-xs uppercase text-yellow-600">On Hold</p>
+                     <p className="text-3xl font-bold text-yellow-500">{stats.onHold}</p>
+                  </div>
+                  <div className="card text-center py-6 border-purple-500/20">
+                     <p className="text-xs uppercase text-purple-600">Serving</p>
+                     <p className="text-3xl font-bold text-purple-500">{stats.serving}</p>
                   </div>
                   <div className="card text-center py-6">
                      <p className="text-xs uppercase text-[var(--text-secondary)]">Served</p>
@@ -314,6 +517,45 @@ export default function StaffDashboard() {
                      <p className="text-3xl font-bold text-[var(--text-primary)]">{stats.total}</p>
                   </div>
                </div>
+
+                {/* ACTIVITY FEED */}
+                <div className="card p-6 border-blue-500/10">
+                   <h3 className="text-sm font-bold uppercase tracking-widest text-[var(--text-secondary)] mb-4 flex items-center gap-2">
+                     📡 Live Activity Feed
+                   </h3>
+                   <div className="space-y-3">
+                      {activityFeed.length > 0 ? activityFeed.map(act => (
+                        <div key={act.id} className="flex justify-between items-center text-sm border-b border-white/5 pb-2 last:border-0">
+                           <span className="text-[var(--text-primary)]">{act.message}</span>
+                           <span className="text-xs opacity-40">{act.time}</span>
+                        </div>
+                      )) : (
+                        <p className="text-xs text-[var(--text-secondary)] italic text-center py-2">No recent activity.</p>
+                      )}
+                   </div>
+                </div>
+
+                {/* BROADCAST SECTION */}
+                <div className="card p-6 border-yellow-500/10">
+                   <h3 className="text-sm font-bold uppercase tracking-widest text-[var(--text-secondary)] mb-4 flex items-center gap-2">
+                     <Megaphone size={16} className="text-yellow-500"/> Department Broadcast
+                   </h3>
+                   <div className="flex gap-2">
+                      <input 
+                        placeholder="Send message to all waiting students..." 
+                        value={broadcastMsg}
+                        onChange={(e) => setBroadcastMsg(e.target.value)}
+                        className="input-field py-2 text-sm flex-1"
+                      />
+                      <button 
+                        onClick={handleSendBroadcast} 
+                        disabled={!broadcastMsg}
+                        className="btn-primary py-2 px-6 text-sm bg-yellow-600 hover:bg-yellow-700"
+                      >
+                        Broadcast
+                      </button>
+                   </div>
+                </div>
 
                 {/* EMERGENCY ALERT SECTION */}
                 {pendingEmergencies > 0 && (
@@ -372,15 +614,16 @@ export default function StaffDashboard() {
         {/* TAB 2: SETTINGS */}
         {activeTab === "settings" && (
            <div className="animate-fade-in max-w-2xl mx-auto space-y-8">
-              <div className="card p-8 flex items-center justify-between">
+              
+              <div className="card p-8 flex items-center justify-between border-blue-500/20">
                  <div>
-                    <h3 className="text-lg font-bold text-[var(--text-primary)]">Queue Status</h3>
-                    <p className={`text-sm mt-1 font-medium ${isQueueOpen ? "text-green-500" : "text-red-500"}`}>
-                       {isQueueOpen ? "Open for students" : "Closed (Paused)"}
+                    <h3 className="text-lg font-bold text-[var(--text-primary)]">Pause Queue (Break)</h3>
+                    <p className={`text-sm mt-1 font-medium ${isPaused ? "text-yellow-500" : "text-[var(--text-secondary)]"}`}>
+                       {isPaused ? "Queue is currently paused" : "Queue is active"}
                     </p>
                  </div>
-                 <button onClick={handleToggleQueue} className={`px-6 py-3 rounded-xl text-white font-bold transition-all ${isQueueOpen ? "bg-red-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-700"}`}>
-                    {isQueueOpen ? "Stop Queue" : "Start Queue"}
+                 <button onClick={handleTogglePause} className={`px-6 py-3 rounded-xl font-bold transition-all ${isPaused ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-white/5 text-[var(--text-primary)] border border-[var(--glass-border)] hover:bg-white/10"}`}>
+                    {isPaused ? "Resume Queue" : "Pause for Break"}
                  </button>
               </div>
 

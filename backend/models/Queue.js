@@ -30,6 +30,14 @@ const queueSchema = new mongoose.Schema(
       type: Number, // in minutes
       default: 5,
     },
+    isPaused: {
+      type: Boolean,
+      default: false,
+    },
+    pauseMessage: {
+      type: String,
+      default: "Staff is currently on a short break. Please wait.",
+    },
     emergencyActive: {
   type: Boolean,
   default: false,

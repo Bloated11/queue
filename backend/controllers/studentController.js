@@ -3,6 +3,9 @@ import Ticket from "../models/Ticket.js";
 import Department from "../models/Department.js";
 import { io } from "../server.js";
 import Feedback from "../models/Feedback.js";
+import { sendTicketEmail } from "../services/email.service.js";
+import User from "../models/User.js";
+import mongoose from "mongoose";
 
 
 
@@ -92,8 +95,21 @@ export const joinQueue = async (req, res) => {
       position: waitingCount + 1,
     });
 
+    // 🛡️ Notify Admins (Analytics Refresh)
+    io.to("admin_room").emit("update_analytics");
+
     // 7️⃣ Calculate ETA
     const eta = waitingCount * queue.averageServiceTime;
+
+    // 📧 SEND EMAIL NOTIFICATION
+    const user = await User.findById(req.user.id);
+    if (user && user.email) {
+      await sendTicketEmail(user.email, {
+        ticketNumber,
+        departmentName: department.name,
+        status: "waiting",
+      });
+    }
 
     // 🆕 AUTO-CLOSE QUEUE IF LIMIT REACHED (IMPORTANT FIX)
     if (queue.maxTickets != null) {
@@ -209,6 +225,7 @@ export const cancelQueue = async (req, res) => {
     }
 
     ticket.status = "no-show";
+    ticket.noShowAt = new Date();
     ticket.servedAt = new Date();
     await ticket.save();
 
@@ -224,6 +241,20 @@ export const cancelQueue = async (req, res) => {
     io.to(`department_${departmentId}`).emit("ticket_cancelled", {
       ticketNumber: ticket.ticketNumber,
     });
+
+    // 🛡️ ANALYTICS
+    io.to("admin_room").emit("update_analytics");
+
+    // 📧 EMAIL NOTIFICATION ON CANCELLATION
+    const user = await User.findById(req.user.id);
+    const department = await Department.findById(departmentId);
+    if (user && user.email) {
+      await sendTicketEmail(user.email, {
+        ticketNumber: ticket.ticketNumber,
+        departmentName: department ? department.name : "Department",
+        status: "cancelled",
+      });
+    }
 
     res.json({
       message: "You have left the queue successfully",
@@ -353,5 +384,123 @@ export const submitFeedback = async (req, res) => {
     });
   }
 };
- 
+// ==============================
+// STUDENT: TOGGLE HOLD STATUS (STEP AWAY)
+// ==============================
+export const toggleHoldStatus = async (req, res) => {
+  try {
+    if (req.user.role !== "student") {
+      return res.status(403).json({ message: "Students only" });
+    }
+
+    const ticket = await Ticket.findOne({
+      user: req.user.id,
+      status: { $in: ["waiting", "hold"] },
+    }).populate({
+      path: "queue",
+      select: "department",
+    });
+
+    if (!ticket) {
+      return res.status(404).json({ message: "No active waiting ticket found" });
+    }
+
+    const isHolding = ticket.status === "hold";
+    ticket.status = isHolding ? "waiting" : "hold";
+    ticket.holdAt = isHolding ? null : new Date();
+    await ticket.save();
+
+    const departmentId = ticket.queue.department.toString();
+
+    // Notify staff dashboard
+    io.to(`department_${departmentId}`).emit("ticket_hold_toggled", {
+      ticketId: ticket._id,
+      status: ticket.status,
+      ticketNumber: ticket.ticketNumber,
+    });
+
+    res.json({
+      message: `Status updated to ${ticket.status}`,
+      status: ticket.status,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ==============================
+// STUDENT: GET DEPARTMENT TRAFFIC (FORECASTING)
+// ==============================
+export const getDepartmentTraffic = async (req, res) => {
+  try {
+    const { departmentId } = req.params;
+
+    const traffic = await Ticket.aggregate([
+      {
+        $lookup: {
+          from: "queues",
+          localField: "queue",
+          foreignField: "_id",
+          as: "queueInfo"
+        }
+      },
+      { $unwind: "$queueInfo" },
+      { $match: { "queueInfo.department": new mongoose.Types.ObjectId(departmentId) } },
+      {
+        $project: {
+          hour: { $hour: "$createdAt" }
+        }
+      },
+      {
+        $group: {
+          _id: "$hour",
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    res.json(traffic);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ==============================
+// STUDENT: RESTORE NO-SHOW TICKET (GRACE PERIOD)
+// ==============================
+export const restoreNoShowTicket = async (req, res) => {
+  try {
+    const { ticketId } = req.body;
+    
+    const ticket = await Ticket.findOne({
+      _id: ticketId,
+      user: req.user.id,
+      status: "no-show"
+    });
+
+    if (!ticket) {
+      return res.status(404).json({ message: "Ticket not found or not eligible" });
+    }
+
+    // Check 5 min grace period
+    const diff = (new Date() - new Date(ticket.noShowAt)) / 60000;
+    if (diff > 5) {
+      return res.status(400).json({ message: "Grace period expired" });
+    }
+
+    // Restore to waiting at the FRONT (by setting createdAt to now, but it's already old)
+    // Actually, setting it to 'waiting' keeps its original place in the sequence if we sort by createdAt.
+    // If we want it at the front, we can't easily do it by createdAt without changing it.
+    // But since it's already old, it will be at the front anyway if we call next.
+    ticket.status = "waiting";
+    ticket.noShowAt = null;
+    ticket.servedAt = null;
+    await ticket.save();
+
+    res.json({ message: "Ticket restored! Please be ready.", status: "waiting" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 

@@ -21,6 +21,9 @@ import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import ProtectedRoute from "./components/ProtectedRoute";
 import SmoothScroll from "./components/SmoothScroll";
+import Chatbot from "./components/Chatbot";
+import FeedbackPrompt from "./components/student/FeedbackPrompt";
+import { Toaster } from "react-hot-toast";
 
 
 /* ==============================
@@ -80,6 +83,19 @@ function Layout({ children }) {
       <SmoothScroll />
       {!hideLayout && <Navbar />}
       {children}
+      <FeedbackPrompt />
+      <Chatbot />
+      <Toaster 
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: 'var(--bg-secondary)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--glass-border)',
+            backdropFilter: 'blur(10px)',
+          },
+        }}
+      />
       {!hideLayout && showFooter && <Footer />}
     </div>
   );

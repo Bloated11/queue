@@ -5,12 +5,19 @@ import { protect } from "../middleware/authMiddleware.js";
 import {
   callNextTicket,
   completeTicket,
+  togglePauseQueue,
   getStaffProfile,
   setQueueLimit,
   toggleQueueStatus,
   increaseQueueLimit,
   generateDepartmentQR,
   getQueueStats,
+  addTicketNote,
+  transferTicket,
+  getTicketDetails,
+  getTransferDepartments,
+  sendDepartmentBroadcast,
+  markNoShow,
 } from "../controllers/staffController.js";
 
 // ===== EMERGENCY CONTROLLERS =====
@@ -67,10 +74,20 @@ router.post(
 // ==============================
 router.post("/call-next", protect, callNextTicket);
 router.post("/complete", protect, completeTicket);
+router.post("/no-show", protect, markNoShow);
 router.post("/toggle-queue", protect, toggleQueueStatus);
+router.post("/toggle-pause", protect, togglePauseQueue);
 router.post("/set-limit", protect, setQueueLimit);
 router.post("/increase-limit", protect, increaseQueueLimit);
 
+// ==============================
+// 📝 NOTES & TRANSFERS
+// ==============================
+router.post("/add-note", protect, addTicketNote);
+router.post("/transfer", protect, transferTicket);
+router.post("/broadcast", protect, sendDepartmentBroadcast);
+router.get("/ticket/:ticketId", protect, getTicketDetails);
+router.get("/transfer-departments", protect, getTransferDepartments);
 
 export default router;
 // Force reload: fixed 404 issue check
