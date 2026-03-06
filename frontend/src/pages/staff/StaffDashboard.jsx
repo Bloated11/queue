@@ -129,12 +129,17 @@ export default function StaffDashboard() {
   const handleAddNote = async () => {
     if (!note || !activeTicketData) return;
     try {
-      await api.post("/staff/add-note", {
+      const res = await api.post("/staff/add-note", {
         ticketId: activeTicketData._id,
         content: note,
       });
       setNote("");
-      fetchActiveTicketDetails(activeTicketData._id);
+      // 🔥 Update UI immediately with populated data
+      if (res.data.ticket) {
+        setActiveTicketData(res.data.ticket);
+      } else {
+        fetchActiveTicketDetails(activeTicketData._id);
+      }
     } catch {
       setMessage("Failed to add note");
     }
@@ -532,28 +537,6 @@ export default function StaffDashboard() {
                       )) : (
                         <p className="text-xs text-[var(--text-secondary)] italic text-center py-2">No recent activity.</p>
                       )}
-                   </div>
-                </div>
-
-                {/* BROADCAST SECTION */}
-                <div className="card p-6 border-yellow-500/10">
-                   <h3 className="text-sm font-bold uppercase tracking-widest text-[var(--text-secondary)] mb-4 flex items-center gap-2">
-                     <Megaphone size={16} className="text-yellow-500"/> Department Broadcast
-                   </h3>
-                   <div className="flex gap-2">
-                      <input 
-                        placeholder="Send message to all waiting students..." 
-                        value={broadcastMsg}
-                        onChange={(e) => setBroadcastMsg(e.target.value)}
-                        className="input-field py-2 text-sm flex-1"
-                      />
-                      <button 
-                        onClick={handleSendBroadcast} 
-                        disabled={!broadcastMsg}
-                        className="btn-primary py-2 px-6 text-sm bg-yellow-600 hover:bg-yellow-700"
-                      >
-                        Broadcast
-                      </button>
                    </div>
                 </div>
 

@@ -85,7 +85,7 @@ router.post("/increase-limit", protect, increaseQueueLimit);
 // ==============================
 router.post("/add-note", protect, addTicketNote);
 router.post("/transfer", protect, transferTicket);
-router.post("/broadcast", protect, sendDepartmentBroadcast);
+// router.post("/broadcast", protect, sendDepartmentBroadcast);
 router.get("/ticket/:ticketId", protect, getTicketDetails);
 router.get("/transfer-departments", protect, getTransferDepartments);
 

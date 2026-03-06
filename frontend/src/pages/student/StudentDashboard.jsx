@@ -112,8 +112,11 @@ export default function StudentDashboard() {
     };
     const onTicketCompleted = (data) => {
       if (ticketInfo && data.ticketNumber === ticketInfo.ticketNumber) {
+        const completedTicketId = ticketInfo._id;
         resetState("Your ticket has been completed. You may join again.");
         toast.success("Ticket Completed! Hope we served you well.");
+        // 🔥 Trigger feedback modal immediately
+        setFeedbackTicketId(completedTicketId);
       }
     };
     const onTicketCancelled = () => resetState("You have left the queue.");
@@ -184,7 +187,6 @@ export default function StudentDashboard() {
     socket.on("emergency_approved", onEmergencyApproved);
     socket.on("emergency_rejected", onEmergencyRejected);
     socket.on("queue_pause_toggled", onPauseToggled);
-    socket.on("department_broadcast", onBroadcast);
     socket.on("you_marked_no_show", onNoShow);
 
     return () => {
@@ -200,7 +202,6 @@ export default function StudentDashboard() {
       socket.off("emergency_approved", onEmergencyApproved);
       socket.off("emergency_rejected", onEmergencyRejected);
       socket.off("queue_pause_toggled", onPauseToggled);
-      socket.off("department_broadcast", onBroadcast);
       socket.off("you_marked_no_show", onNoShow);
     };
   }, [ticketInfo, alertsEnabled]);
@@ -500,27 +501,6 @@ export default function StudentDashboard() {
                            I'M HERE!
                          </button>
                       </div>
-                   </div>
-                )}
-
-                {/* BROADCAST BANNER */}
-                {broadcast && (
-                   <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl p-4 flex items-start gap-4 animate-in slide-in-from-top-4 duration-500 relative overflow-hidden group">
-                      <div className="bg-yellow-500/20 p-2 rounded-xl text-yellow-500 animate-pulse">
-                         <Megaphone size={20} />
-                      </div>
-                      <div className="flex-1">
-                         <div className="flex justify-between items-center mb-1">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-yellow-500/60">Department Announcement</span>
-                            <span className="text-[10px] opacity-40">{new Date(broadcast.timestamp).toLocaleTimeString()}</span>
-                         </div>
-                         <p className="text-[var(--text-primary)] font-bold text-sm leading-relaxed">{broadcast.message}</p>
-                         <p className="text-[10px] text-[var(--text-secondary)] mt-2 italic">— Sent by {broadcast.staffName}</p>
-                      </div>
-                      <button onClick={() => setBroadcast(null)} className="opacity-0 group-hover:opacity-40 hover:!opacity-100 transition-opacity absolute top-2 right-2 p-1">
-                         <CheckCircle size={14} />
-                      </button>
-                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-yellow-500" />
                    </div>
                 )}
 

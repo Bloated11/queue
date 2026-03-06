@@ -494,22 +494,32 @@ export const getQueueStats = async (req, res) => {
       return res.status(404).json({ message: "Queue not found" });
     }
 
-    const total = await Ticket.countDocuments({ queue: queue._id });
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const total = await Ticket.countDocuments({ 
+        queue: queue._id, 
+        createdAt: { $gte: today } 
+    });
     const served = await Ticket.countDocuments({
       queue: queue._id,
       status: "completed",
+      createdAt: { $gte: today }
     });
     const waiting = await Ticket.countDocuments({
       queue: queue._id,
       status: "waiting",
+      createdAt: { $gte: today }
     });
     const serving = await Ticket.countDocuments({
       queue: queue._id,
       status: "serving",
+      createdAt: { $gte: today }
     });
     const onHold = await Ticket.countDocuments({
       queue: queue._id,
       status: "hold",
+      createdAt: { $gte: today }
     });
 
     res.json({
@@ -542,7 +552,12 @@ export const addTicketNote = async (req, res) => {
 
     await ticket.save();
 
-    res.json({ message: "Note added", notes: ticket.notes });
+    // 🚀 Return the ticket with populated notes
+    const updatedTicket = await Ticket.findById(ticketId)
+      .populate("user", "fullName email")
+      .populate("notes.author", "fullName");
+
+    res.json({ message: "Note added", ticket: updatedTicket });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

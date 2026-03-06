@@ -20,6 +20,10 @@ import chatbotRoutes from "./routes/chatbotRoutes.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
 import { initWebPush } from "./utils/push.js";
 import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 
 // =======================
@@ -150,9 +154,13 @@ server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 
   // 🤖 AUTO-START CHATBOT SERVICE (FASTAPI)
-  const chatbotPython = path.resolve(process.cwd(), "../Chatbot/venv/bin/python3");
+  const chatbotDir = path.resolve(__dirname, "../Chatbot");
+  const chatbotPython = path.resolve(chatbotDir, "venv/bin/python3");
+  
+  console.log("🤖 Starting Chatbot service from:", chatbotDir);
+
   const chatbotProcess = spawn(chatbotPython, ["main.py"], {
-    cwd: path.resolve(process.cwd(), "../Chatbot"),
+    cwd: chatbotDir,
     stdio: "inherit",
   });
 
